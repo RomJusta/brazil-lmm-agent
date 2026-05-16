@@ -9,15 +9,13 @@ RUN apt-get update && apt-get install -y \
     libgbm1 libasound2 libxshmfence1 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
+# Copy source and install Python deps
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e ".[api]"
+COPY src/ src/
+RUN pip install --no-cache-dir ".[api]"
 
 # Install Playwright browser
 RUN playwright install chromium --with-deps
-
-# Copy source
-COPY src/ src/
 
 EXPOSE 8000
 
