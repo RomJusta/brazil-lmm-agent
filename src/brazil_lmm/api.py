@@ -39,8 +39,12 @@ async def lifespan(app: FastAPI):
     global db, orchestrator
     orchestrator = Orchestrator()
     if os.getenv("DATABASE_URL"):
-        db = Database()
-        await db.init()
+        try:
+            db = Database()
+            await db.init()
+        except Exception as e:
+            print(f"WARNING: Database unavailable ({e}). Running without persistence.")
+            db = None
     yield
     if db:
         await db.close()
