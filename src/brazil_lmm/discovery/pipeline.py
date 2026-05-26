@@ -64,14 +64,23 @@ class DiscoveryPipeline:
         companies = await self._orchestrator.process_batch(queries)
 
         # Phase 3: filter + rank
-        companies = [
-            c for c in companies
-            if c.is_active
-            and (c.outreach_score or 0) >= f.min_outreach_score
-        ]
-        companies.sort(key=lambda c: c.outreach_score or 0, reverse=True)
-        print(f"[PIPELINE] {len(companies)} companies after enrichment + filter")
-        return companies
+        active = [c for c in companies if c.is_active]
+        filtered = [c for c in active if (c.outreach_score or 0) >= f.min_outreach_score]
+
+        # Fallback: se o score mínimo filtrar tudo, ignora o limiar e retorna todos ativos
+        # (acontece quando não há API keys — máximo score possível é ~0.25)
+        if not filtered and active and f.min_outreach_score > 0:
+            max_score = max((c.outreach_score or 0) for c in active)
+            print(
+                f"[PIPELINE] Score mínimo {f.min_outreach_score:.0%} filtrou todas as "
+                f"{len(active)} empresas ativas (score máximo obtido: {max_score:.0%}). "
+                "Retornando todas as ativas sem filtro de score."
+            )
+            filtered = active
+
+        filtered.sort(key=lambda c: c.outreach_score or 0, reverse=True)
+        print(f"[PIPELINE] {len(filtered)} companies after enrichment + filter")
+        return filtered
 
     async def _discover_all(self, f: DiscoveryFilter) -> list[DiscoveredCompany]:
         tasks = []

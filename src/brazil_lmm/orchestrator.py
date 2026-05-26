@@ -33,12 +33,14 @@ from brazil_lmm.models import (
 
 SCORE_WEIGHTS = {
     # Offer: Crédito / Financiamento — Indústria + Saúde
-    "is_lmm": 25,               # revenue bracket R$50M–R$850M
-    "has_bndes_credit": 25,     # already uses structured credit = easiest to convert
-    "has_finep_credit": 15,     # innovation credit = open to new instruments
-    "active_company": 15,       # not dormant
-    "has_ceo_contact": 10,      # can reach decision maker directly
-    "target_sector": 10,        # Indústria or Saúde = primary targets
+    # Nota: pesos somam 100. Score normalizado 0–1.
+    # Sem API keys externas máximo atingível é (active+sector+lmm) = até 55 pts
+    "is_lmm": 25,               # receita verificada R$50M–R$850M
+    "has_bndes_credit": 20,     # já usa crédito estruturado = lead mais quente
+    "has_finep_credit": 10,     # usa fomento à inovação
+    "active_company": 20,       # empresa ativa (sempre checado)
+    "has_ceo_contact": 10,      # acesso ao decisor
+    "target_sector": 15,        # Indústria ou Saúde = alvo primário
 }
 
 

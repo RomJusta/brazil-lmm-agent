@@ -197,10 +197,10 @@ HTML = """
         <div>
           <label style="font-size:.85rem;color:#6b7280;display:block;margin-bottom:4px">Score mínimo</label>
           <select id="disc-minscore">
-            <option value="0">Todos</option>
-            <option value="0.3">Acima de 30%</option>
-            <option value="0.5" selected>Acima de 50%</option>
-            <option value="0.7">Acima de 70% (alta qualidade)</option>
+            <option value="0" selected>Todos</option>
+            <option value="0.2">Acima de 20%</option>
+            <option value="0.4">Acima de 40%</option>
+            <option value="0.6">Acima de 60% (requer API keys)</option>
           </select>
         </div>
       </div>
