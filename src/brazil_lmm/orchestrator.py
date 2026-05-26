@@ -51,7 +51,8 @@ class Orchestrator:
         builtwith_api_key: str | None = None,
         linkedin_cookie: str | None = None,
     ) -> None:
-        self._genai = genai.Client(api_key=google_api_key or os.environ["GOOGLE_API_KEY"])
+        api_key = google_api_key or os.getenv("GOOGLE_API_KEY", "")
+        self._genai = genai.Client(api_key=api_key) if api_key else None
         self._transparencia_key = transparencia_api_key or os.getenv("TRANSPARENCIA_API_KEY")
         self._builtwith_key = builtwith_api_key or os.getenv("BUILTWITH_API_KEY")
         self._linkedin_cookie = linkedin_cookie or os.getenv("LINKEDIN_LI_AT_COOKIE")
@@ -292,6 +293,8 @@ class Orchestrator:
         outreach_notes: str | None = None
 
         try:
+            if not self._genai:
+                return company
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
