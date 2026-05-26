@@ -189,9 +189,9 @@ HTML = """
         <div>
           <label style="font-size:.85rem;color:#6b7280;display:block;margin-bottom:4px">Quantidade de leads</label>
           <select id="disc-limit">
-            <option value="50">50 empresas (rápido ~2 min)</option>
-            <option value="100" selected>100 empresas (~5 min)</option>
-            <option value="200">200 empresas (~10 min)</option>
+            <option value="20" selected>20 empresas (rápido ~30s)</option>
+            <option value="50">50 empresas (~2 min)</option>
+            <option value="100">100 empresas (~5 min)</option>
           </select>
         </div>
         <div>
@@ -294,9 +294,15 @@ HTML = """
     <!-- Detail panel -->
     <div class="detail-panel" id="detail-panel">
       <hr style="margin:20px 0;border-color:#f3f4f6">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h2 id="detail-name" style="font-size:1.1rem"></h2>
-        <button onclick="closeDetail()" style="border:none;background:none;cursor:pointer;font-size:1.2rem;color:#6b7280">✕</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="btn-rationale" onclick="generateRationale()"
+            style="background:#166534;color:white;border:none;padding:7px 14px;border-radius:6px;font-size:.85rem;cursor:pointer">
+            🎯 Gerar racional Gemini
+          </button>
+          <button onclick="closeDetail()" style="border:none;background:none;cursor:pointer;font-size:1.2rem;color:#6b7280">✕</button>
+        </div>
       </div>
       <div class="detail-grid" id="detail-grid"></div>
       <div class="notes" id="detail-notes" style="display:none"></div>
@@ -599,6 +605,31 @@ function kv(k, v) {
 }
 function bndesTotal(c) { return (c.bndes_contracts||[]).reduce((s,x)=>s+(x.value_brl||0),0) || null; }
 function finepTotal(c) { return (c.finep_contracts||[]).reduce((s,x)=>s+(x.value_brl||0),0) || null; }
+
+async function generateRationale() {
+  if (!selectedCnpj) return;
+  const btn = document.getElementById('btn-rationale');
+  btn.disabled = true; btn.textContent = '⏳ Gerando...';
+  try {
+    const r = await fetch('/enrich', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({cnpj: selectedCnpj})
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const enriched = await r.json();
+    // Atualiza currentData
+    const idx = currentData.findIndex(c => c.cnpj === selectedCnpj);
+    if (idx >= 0) currentData[idx] = enriched;
+    // Re-renderiza o detalhe
+    const row = document.querySelector(`#results-body tr.selected`);
+    if (row) showDetail(enriched, row);
+    toast('Racional gerado ✓');
+  } catch(e) {
+    toast('Erro ao gerar racional: ' + e.message);
+    btn.disabled = false; btn.textContent = '🎯 Gerar racional Gemini';
+  }
+}
 
 function closeDetail() {
   document.getElementById('detail-panel').classList.remove('open');

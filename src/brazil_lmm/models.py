@@ -262,7 +262,8 @@ class CompanyQuery(BaseModel):
     cnpj: str | None = None
     company_name: str | None = None
     website: str | None = None
-    revenue_hint: float | None = None  # receita verificada da CVM/DFP (R$)
+    revenue_hint: float | None = None   # receita verificada da CVM/DFP (R$)
+    skip_gemini: bool = False            # True em batch discovery para evitar rate limit
 
     @field_validator("cnpj", mode="before")
     @classmethod

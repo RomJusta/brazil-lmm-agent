@@ -93,8 +93,9 @@ class Orchestrator:
 
         company = self._merge_into(company, [linkedin_partial, tech_partial])
 
-        # Phase 3: Claude disambiguation for ambiguous / conflicting fields
-        company = await self._claude_disambiguate(company, query)
+        # Phase 3: Gemini disambiguation — skip em batch para evitar rate limit
+        if not query.skip_gemini:
+            company = await self._claude_disambiguate(company, query)
 
         # Phase 4: derive computed fields
         company.sector = company.sector or company.derive_sector()

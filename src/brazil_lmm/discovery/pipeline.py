@@ -35,7 +35,7 @@ class DiscoveryFilter:
     use_econodata: bool = True
     use_transparencia: bool = True
     use_seed: bool = True
-    use_cvm: bool = True
+    use_cvm: bool = False  # desabilitado por padrão — baixa ZIP de ~100MB da CVM
 
 
 class DiscoveryPipeline:
@@ -52,12 +52,14 @@ class DiscoveryPipeline:
 
         print(f"[PIPELINE] {len(candidates)} unique candidates → enriching...")
 
-        # Phase 2: enrich — passa revenue_hint da CVM quando disponível
+        # Phase 2: enrich — skip_gemini=True para não travar em batch
+        # O racional Gemini é gerado on-demand ao clicar numa empresa individual
         queries = [
             CompanyQuery(
                 cnpj=c.cnpj,
                 company_name=c.razao_social or None,
                 revenue_hint=c.revenue_hint,
+                skip_gemini=True,
             )
             for c in candidates
         ]
