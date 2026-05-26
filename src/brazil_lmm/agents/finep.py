@@ -97,7 +97,7 @@ class FINEPAgent(BaseAgent):
                     continue
                 contracts.append(self._parse_transparencia_item(item))
 
-        except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError):
+        except Exception:
             pass
 
         return contracts
@@ -168,7 +168,7 @@ class FINEPAgent(BaseAgent):
                     description=title,
                 ))
 
-        except (httpx.HTTPStatusError, httpx.RequestError, Exception):
+        except Exception:
             pass
 
         return contracts

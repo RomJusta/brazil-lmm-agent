@@ -5,9 +5,16 @@ import os
 from abc import ABC, abstractmethod
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from brazil_lmm.models import PartialCompany
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Only retry on network errors or 5xx server errors — never on 4xx client errors."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return isinstance(exc, (httpx.RequestError, httpx.TransportError))
 
 
 class BaseAgent(ABC):
@@ -38,7 +45,7 @@ class BaseAgent(ABC):
             raise RuntimeError("Agent must be used as async context manager")
         return self._client
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10), retry=retry_if_exception(_is_retryable))
     async def _get(self, url: str, **kwargs: object) -> httpx.Response:
         async with self._semaphore:
             resp = await self.client.get(url, **kwargs)  # type: ignore[arg-type]
