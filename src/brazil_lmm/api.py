@@ -27,6 +27,7 @@ from brazil_lmm.orchestrator import Orchestrator
 from brazil_lmm.storage.database import Database
 from brazil_lmm.export.exporter import _flatten, COLUMNS
 from brazil_lmm.discovery.pipeline import DiscoveryPipeline, DiscoveryFilter
+from brazil_lmm.discovery.bndes_upload import parse_bndes_file
 
 
 class DiscoverRequest(BaseModel):
@@ -204,7 +205,15 @@ HTML = """
       <div style="background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:12px;font-size:.875rem">
         <strong>Fonte primária:</strong> BNDES Transparência — empresas que já usam crédito estruturado = leads mais quentes para uma oferta de financiamento.
       </div>
-      <button class="primary" onclick="runDiscover()">🚀 Descobrir e ranquear empresas</button>
+      <button class="primary" onclick="runDiscover()" style="margin-bottom:12px">🚀 Descobrir via API (requer conectividade)</button>
+
+      <div style="border-top:1px solid #e5e7eb;margin:16px 0"></div>
+      <p style="font-size:.875rem;font-weight:600;margin-bottom:8px">📂 Ou faça upload da planilha BNDES (recomendado)</p>
+      <p style="font-size:.8rem;color:#6b7280;margin-bottom:10px">
+        Baixe em: <a href="https://www.bndes.gov.br/wps/portal/site/home/transparencia/consulta-operacoes-bndes" target="_blank" style="color:#1a2b4a">bndes.gov.br → Transparência → Exportar planilha</a>
+      </p>
+      <input type="file" id="bndesFile" accept=".csv,.xlsx,.xls" style="margin-bottom:10px">
+      <button class="primary" onclick="uploadBNDES()">📊 Processar planilha BNDES</button>
     </div>
 
     <!-- Single CNPJ -->
@@ -305,6 +314,28 @@ function switchTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   const el = document.getElementById('tab-' + name);
   if (el) el.classList.add('active');
+}
+
+async function uploadBNDES() {
+  const file = document.getElementById('bndesFile').files[0];
+  if (!file) { toast('Selecione a planilha BNDES'); return; }
+  loading(true);
+  toast('Processando planilha... pode levar alguns minutos ⏳');
+  const form = new FormData();
+  form.append('file', file);
+  form.append('sectors', 'industria,saude');
+  form.append('limit', '200');
+  try {
+    const r = await fetch('/discover/upload', {method:'POST', body: form});
+    if (!r.ok) throw new Error(await r.text());
+    currentData = await r.json();
+    renderTable(currentData);
+    toast(`${currentData.length} empresas encontradas e ranqueadas ✓`);
+  } catch(e) {
+    toast('Erro: ' + e.message);
+  } finally {
+    loading(false);
+  }
 }
 
 async function runDiscover() {
@@ -647,6 +678,49 @@ async def discover(req: DiscoverRequest) -> list[dict]:
         tb = traceback.format_exc()
         print(tb)
         raise HTTPException(500, detail=f"{type(e).__name__}: {e}\n\n{tb}")
+
+
+@app.post("/discover/upload")
+async def discover_upload(
+    file: UploadFile = File(...),
+    sectors: str = Form("industria,saude"),
+    limit: int = Form(200),
+) -> list[dict]:
+    """
+    Upload a BNDES Excel/CSV file downloaded from bndes.gov.br.
+    Parses CNPJs, enriches each company, returns ranked list.
+    """
+    if not orchestrator:
+        raise HTTPException(503, "Orchestrator not initialized")
+
+    try:
+        content = await file.read()
+        sector_list = [s.strip() for s in sectors.split(",")]
+
+        candidates = parse_bndes_file(content, file.filename or "upload.csv", sector_list)
+        candidates = candidates[:limit]
+
+        if not candidates:
+            raise HTTPException(400, "No matching companies found in file. Check sector/value filters.")
+
+        queries = [
+            CompanyQuery(cnpj=c.cnpj, company_name=c.razao_social)
+            for c in candidates
+        ]
+        companies = await orchestrator.process_batch(queries)
+        companies.sort(key=lambda c: c.outreach_score or 0, reverse=True)
+
+        if db:
+            await db.upsert_batch(companies)
+
+        return [c.model_dump() for c in companies]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(500, detail=str(e))
 
 
 @app.get("/export/csv")
