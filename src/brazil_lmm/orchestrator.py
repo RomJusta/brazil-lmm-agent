@@ -9,8 +9,8 @@ import os
 from datetime import datetime
 from typing import Any
 
-import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool
+from google import genai
+from google.genai import types as genai_types
 
 from brazil_lmm.agents.bndes import BNDESAgent
 from brazil_lmm.agents.finep import FINEPAgent
@@ -51,8 +51,7 @@ class Orchestrator:
         builtwith_api_key: str | None = None,
         linkedin_cookie: str | None = None,
     ) -> None:
-        genai.configure(api_key=google_api_key or os.environ["GOOGLE_API_KEY"])
-        self._model = genai.GenerativeModel("gemini-1.5-pro")
+        self._genai = genai.Client(api_key=google_api_key or os.environ["GOOGLE_API_KEY"])
         self._transparencia_key = transparencia_api_key or os.getenv("TRANSPARENCIA_API_KEY")
         self._builtwith_key = builtwith_api_key or os.getenv("BUILTWITH_API_KEY")
         self._linkedin_cookie = linkedin_cookie or os.getenv("LINKEDIN_LI_AT_COOKIE")
@@ -250,33 +249,34 @@ class Orchestrator:
         """
         company_json = company.model_dump_json(indent=2)
 
-        update_field_fn = FunctionDeclaration(
-            name="update_company_field",
-            description="Update a specific field on the company record with a resolved value.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "field": {"type": "string", "description": "Field path e.g. 'sector'"},
-                    "value": {"type": "string", "description": "Resolved value"},
-                    "reasoning": {"type": "string", "description": "One sentence explanation"},
-                },
-                "required": ["field", "value", "reasoning"],
-            },
-        )
-
-        add_notes_fn = FunctionDeclaration(
-            name="add_outreach_notes",
-            description="Add outreach notes summarizing commercial fit.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "notes": {"type": "string", "description": "2-3 sentences in Portuguese"},
-                },
-                "required": ["notes"],
-            },
-        )
-
-        tools = Tool(function_declarations=[update_field_fn, add_notes_fn])
+        tools = [
+            genai_types.Tool(function_declarations=[
+                genai_types.FunctionDeclaration(
+                    name="update_company_field",
+                    description="Update a specific field on the company record.",
+                    parameters=genai_types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "field": genai_types.Schema(type="STRING", description="Field path e.g. 'sector'"),
+                            "value": genai_types.Schema(type="STRING", description="Resolved value"),
+                            "reasoning": genai_types.Schema(type="STRING", description="One sentence explanation"),
+                        },
+                        required=["field", "value", "reasoning"],
+                    ),
+                ),
+                genai_types.FunctionDeclaration(
+                    name="add_outreach_notes",
+                    description="Add outreach notes summarizing commercial fit.",
+                    parameters=genai_types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "notes": genai_types.Schema(type="STRING", description="2-3 sentences in Portuguese"),
+                        },
+                        required=["notes"],
+                    ),
+                ),
+            ])
+        ]
 
         prompt = (
             "Você é um analista de inteligência comercial brasileiro especializado em crédito.\n"
@@ -295,9 +295,13 @@ class Orchestrator:
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
-                lambda: self._model.generate_content(prompt, tools=[tools]),
+                lambda: self._genai.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(tools=tools),
+                ),
             )
-            for part in response.parts:
+            for part in response.candidates[0].content.parts:
                 if part.function_call:
                     name = part.function_call.name
                     args = dict(part.function_call.args)
