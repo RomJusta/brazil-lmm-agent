@@ -266,57 +266,144 @@ class Orchestrator:
     # Claude disambiguation
     # -----------------------------------------------------------------------
 
+    # Referência de programas BNDES/FINEP embutida no prompt
+    _PROGRAMS_REFERENCE = """
+PROGRAMAS BNDES DISPONÍVEIS:
+- BNDES Automático: até R$150M, capex geral (máquinas, instalações, TI, expansão)
+- BNDES FINEM: acima de R$10M, projetos estruturados de expansão/modernização
+- BNDES Finame: financiamento de máquinas e equipamentos nacionais
+- BNDES Inovação: P&D, prototipagem, transformação digital, automação industrial
+- BNDES Crédito Verde: eficiência energética, energia renovável, tratamento de resíduos
+- BNDES MPME Inovadora: para empresas de menor porte com projetos de inovação
+- BNDES Profarma: setor farmacêutico e equipamentos médicos
+- BNDES Proengenharia: empresas de engenharia e serviços tecnológicos
+
+PROGRAMAS FINEP DISPONÍVEIS:
+- FINEP Subvenção Econômica: recursos NÃO reembolsáveis para P&D (até 60% do projeto)
+- FINEP Crédito Inovação: empréstimos com juros abaixo do mercado para inovação
+- FINEP RHAE: bolsas para trazer pesquisadores/doutores para dentro da empresa
+- FINEP Inovacred: crédito direto para inovação em micro/pequenas empresas
+- FINEP Encomendas Tecnológicas: para desenvolvimento de soluções específicas
+- FINEP Startup: para startups e spin-offs de empresas maiores
+
+SINAIS DE NECESSIDADE POR SETOR:
+- Indústria/Manufatura: automação, indústria 4.0, redução de perdas, eficiência energética
+- Farmacêutico: P&D de novos fármacos, bioequivalência, regulatório ANVISA, exportação
+- Saúde/Hospitais: digitalização de prontuário, equipamentos, expansão de leitos
+- Têxtil: moda circular, tingimento sustentável, fibras técnicas, e-commerce
+- Construção: novas tecnologias construtivas (steel frame, off-site), BIM, ESG
+- Agro/Insumos: biopesticidas, rastreabilidade, irrigação de precisão
+- Logística: TMS, WMS, frota elétrica, automação de armazém
+"""
+
     async def _claude_disambiguate(self, company: Company, query: CompanyQuery) -> Company:
         """
-        Ask Gemini to resolve ambiguous fields and fill gaps using function calling.
+        Usa Gemini para dois objetivos:
+        1. Resolver campos ambíguos/ausentes no registro
+        2. Gerar racional comercial estruturado (por que abordar, lacunas de inovação,
+           programas sugeridos, estrutura de captação, timing)
         """
+        if not self._genai:
+            return company
+
         company_json = company.model_dump_json(indent=2)
 
         tools = [
             genai_types.Tool(function_declarations=[
                 genai_types.FunctionDeclaration(
                     name="update_company_field",
-                    description="Update a specific field on the company record.",
+                    description="Atualiza um campo específico do registro da empresa.",
                     parameters=genai_types.Schema(
                         type="OBJECT",
                         properties={
-                            "field": genai_types.Schema(type="STRING", description="Field path e.g. 'sector'"),
-                            "value": genai_types.Schema(type="STRING", description="Resolved value"),
-                            "reasoning": genai_types.Schema(type="STRING", description="One sentence explanation"),
+                            "field": genai_types.Schema(type="STRING", description="Caminho do campo, ex: 'sector'"),
+                            "value": genai_types.Schema(type="STRING", description="Valor resolvido"),
+                            "reasoning": genai_types.Schema(type="STRING", description="Justificativa em uma frase"),
                         },
                         required=["field", "value", "reasoning"],
                     ),
                 ),
                 genai_types.FunctionDeclaration(
-                    name="add_outreach_notes",
-                    description="Add outreach notes summarizing commercial fit.",
+                    name="set_commercial_rationale",
+                    description=(
+                        "Define o racional comercial completo para abordagem desta empresa "
+                        "com uma oferta de captação/financiamento via BNDES ou FINEP."
+                    ),
                     parameters=genai_types.Schema(
                         type="OBJECT",
                         properties={
-                            "notes": genai_types.Schema(type="STRING", description="2-3 sentences in Portuguese"),
+                            "why_approach": genai_types.Schema(
+                                type="STRING",
+                                description=(
+                                    "2-3 frases em português explicando POR QUÊ abordar esta empresa "
+                                    "AGORA para uma oferta de crédito/fomento. Baseie-se em: setor, "
+                                    "porte, histórico BNDES/FINEP, CNAE, cidade/estado. "
+                                    "Seja específico ao contexto desta empresa, não genérico."
+                                ),
+                            ),
+                            "innovation_needs": genai_types.Schema(
+                                type="STRING",
+                                description=(
+                                    "2-3 frases descrevendo as LACUNAS DE INOVAÇÃO prováveis desta empresa "
+                                    "com base no setor e CNAE. Ex: automação industrial, transformação digital, "
+                                    "eficiência energética, P&D de produtos, expansão de capacidade produtiva. "
+                                    "Relacione com o momento do setor no Brasil."
+                                ),
+                            ),
+                            "credit_structure": genai_types.Schema(
+                                type="STRING",
+                                description=(
+                                    "Descreva a ESTRUTURA DE CAPTAÇÃO mais adequada: qual programa, "
+                                    "faixa de valor estimada, prazo típico, taxa de juros esperada. "
+                                    "Ex: 'BNDES Automático R$5M–R$20M a TJLP+2%a.a. 60 meses para "
+                                    "modernização de linha produtiva + FINEP Subvenção 30% do projeto'."
+                                ),
+                            ),
+                            "suggested_programs": genai_types.Schema(
+                                type="STRING",
+                                description=(
+                                    "Lista dos 2-4 programas mais adequados separados por vírgula. "
+                                    "Ex: 'BNDES Automático, BNDES Inovação, FINEP Subvenção Econômica'"
+                                ),
+                            ),
+                            "urgency_factors": genai_types.Schema(
+                                type="STRING",
+                                description=(
+                                    "1-2 frases sobre TIMING e urgência: por que agora é um bom momento "
+                                    "para esta empresa captar. Ex: ciclo de investimento do setor, "
+                                    "janelas de chamadas FINEP abertas, mudanças regulatórias, "
+                                    "pressão competitiva, dados macroeconômicos relevantes."
+                                ),
+                            ),
                         },
-                        required=["notes"],
+                        required=["why_approach", "innovation_needs", "credit_structure",
+                                  "suggested_programs", "urgency_factors"],
                     ),
                 ),
             ])
         ]
 
         prompt = (
-            "Você é um analista de inteligência comercial brasileiro especializado em crédito.\n"
-            "Revise o registro da empresa abaixo e:\n"
-            "1. Resolva campos ausentes usando as evidências disponíveis.\n"
-            "2. Infira o setor pelo CNAE se estiver faltando.\n"
-            "3. Escreva notas de prospecção em português focadas em oferta de crédito/financiamento.\n"
-            "Não invente dados — use apenas o que está no registro.\n\n"
-            f"Registro:\n```json\n{company_json}\n```"
+            "Você é um especialista em estruturação de crédito e fomento à inovação no Brasil, "
+            "com profundo conhecimento de BNDES e FINEP.\n\n"
+            "Analise o registro abaixo de uma empresa candidata a uma oferta de "
+            "captação/financiamento via fomento público (BNDES + FINEP).\n\n"
+            "Suas tarefas:\n"
+            "1. Se o campo 'sector' estiver vazio, infira pelo CNAE e chame update_company_field.\n"
+            "2. SEMPRE chame set_commercial_rationale com análise específica e fundamentada "
+            "para ESTA empresa — não use texto genérico, use os dados do registro "
+            "(setor, CNAE, cidade, contratos BNDES/FINEP existentes, porte estimado).\n\n"
+            "IMPORTANTE: Se a empresa já tem contratos BNDES, isso é sinal POSITIVO "
+            "(já usa crédito estruturado = mais fácil converter). Se não tem, "
+            "é oportunidade de primeiro crédito.\n\n"
+            f"{self._PROGRAMS_REFERENCE}\n\n"
+            f"REGISTRO DA EMPRESA:\n```json\n{company_json}\n```"
         )
 
         updates: dict[str, Any] = {}
-        outreach_notes: str | None = None
+        rationale: dict[str, Any] = {}
 
         try:
-            if not self._genai:
-                return company
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
@@ -328,20 +415,33 @@ class Orchestrator:
             )
             for part in response.candidates[0].content.parts:
                 if part.function_call:
-                    name = part.function_call.name
+                    fn_name = part.function_call.name
                     args = dict(part.function_call.args)
-                    if name == "update_company_field":
+                    if fn_name == "update_company_field":
                         updates[args["field"]] = args["value"]
-                    elif name == "add_outreach_notes":
-                        outreach_notes = args["notes"]
+                    elif fn_name == "set_commercial_rationale":
+                        rationale = args
         except Exception:
-            pass  # Gemini step is best-effort; don't crash enrichment
+            pass  # Gemini é best-effort; não deixa o enriquecimento falhar
 
         for field_path, value in updates.items():
             self._apply_field_update(company, field_path, value)
 
-        if outreach_notes:
-            company.outreach_notes = outreach_notes
+        if rationale:
+            company.why_approach = rationale.get("why_approach")
+            company.innovation_needs = rationale.get("innovation_needs")
+            company.credit_structure = rationale.get("credit_structure")
+            company.urgency_factors = rationale.get("urgency_factors")
+            # Converte string CSV para lista
+            progs_raw = rationale.get("suggested_programs", "")
+            company.suggested_programs = [
+                p.strip() for p in progs_raw.split(",") if p.strip()
+            ]
+            # Mantém outreach_notes como resumo concatenado para compatibilidade
+            company.outreach_notes = " | ".join(filter(None, [
+                rationale.get("why_approach"),
+                rationale.get("credit_structure"),
+            ]))
 
         return company
 

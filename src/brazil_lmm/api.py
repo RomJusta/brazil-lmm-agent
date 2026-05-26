@@ -131,6 +131,7 @@ HTML = """
     .detail-panel { display: none; }
     .detail-panel.open { display: block; }
     .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+    .detail-grid > div:first-child { grid-column: 1 / -1; }
     .detail-section { background: #f9fafb; border-radius: 8px; padding: 16px; }
     .detail-section h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .05em;
                           color: #6b7280; margin-bottom: 12px; }
@@ -503,7 +504,46 @@ function showDetail(c, tr) {
     ...c.tech_stack?.analytics||[], ...c.tech_stack?.other||[]
   ];
 
-  grid.innerHTML = `
+  // Racional comercial — bloco de destaque no topo
+  const hasRacional = c.why_approach || c.innovation_needs || c.credit_structure;
+  const racionalHtml = hasRacional ? `
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span style="font-size:1.1rem">🎯</span>
+        <strong style="font-size:.9rem;color:#166534;text-transform:uppercase;letter-spacing:.05em">Racional Comercial</strong>
+        <span style="margin-left:auto;font-size:.75rem;color:#6b7280">Gerado por IA com base nos dados disponíveis</span>
+      </div>
+      ${c.why_approach ? `
+        <div style="margin-bottom:12px">
+          <div style="font-size:.75rem;font-weight:600;color:#166534;margin-bottom:4px">POR QUE ABORDAR</div>
+          <p style="font-size:.875rem;color:#1a2b4a;line-height:1.5">${c.why_approach}</p>
+        </div>` : ''}
+      ${c.innovation_needs ? `
+        <div style="margin-bottom:12px">
+          <div style="font-size:.75rem;font-weight:600;color:#166534;margin-bottom:4px">LACUNAS DE INOVAÇÃO IDENTIFICADAS</div>
+          <p style="font-size:.875rem;color:#1a2b4a;line-height:1.5">${c.innovation_needs}</p>
+        </div>` : ''}
+      ${c.credit_structure ? `
+        <div style="margin-bottom:12px">
+          <div style="font-size:.75rem;font-weight:600;color:#166534;margin-bottom:4px">ESTRUTURA DE CAPTAÇÃO SUGERIDA</div>
+          <p style="font-size:.875rem;color:#1a2b4a;line-height:1.5">${c.credit_structure}</p>
+        </div>` : ''}
+      ${c.suggested_programs?.length ? `
+        <div style="margin-bottom:12px">
+          <div style="font-size:.75rem;font-weight:600;color:#166534;margin-bottom:6px">PROGRAMAS RECOMENDADOS</div>
+          <div>${(c.suggested_programs||[]).map(p => `<span style="display:inline-block;background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-size:.8rem;font-weight:600;margin:2px">${p}</span>`).join('')}</div>
+        </div>` : ''}
+      ${c.urgency_factors ? `
+        <div>
+          <div style="font-size:.75rem;font-weight:600;color:#d97706;margin-bottom:4px">⚡ TIMING / URGÊNCIA</div>
+          <p style="font-size:.875rem;color:#92400e;line-height:1.5">${c.urgency_factors}</p>
+        </div>` : ''}
+    </div>` : `
+    <div style="background:#f9fafb;border:1px dashed #d1d5db;border-radius:10px;padding:16px;margin-bottom:16px;text-align:center;color:#9ca3af;font-size:.875rem">
+      Racional comercial não gerado — verifique se GOOGLE_API_KEY está configurado no Railway.
+    </div>`;
+
+  grid.innerHTML = racionalHtml + `
     <div class="detail-section">
       <h3>Identidade</h3>
       ${kv('CNPJ', c.cnpj)}
@@ -523,22 +563,22 @@ function showDetail(c, tr) {
     </div>
     <div class="detail-section">
       <h3>Financeiro</h3>
-      ${kv('Receita estimada', fmt(c.financials?.revenue_brl))}
+      ${kv('Receita', fmt(c.financials?.revenue_brl))}
+      ${kv('Fonte receita', c.financials?.source || '—')}
       ${kv('EBITDA', fmt(c.financials?.ebitda_brl))}
       ${kv('Margem EBITDA', c.financials?.ebitda_margin ? (c.financials.ebitda_margin*100).toFixed(1)+'%' : '—')}
       ${kv('Funcionários', c.financials?.headcount?.toLocaleString('pt-BR'))}
-      ${kv('Fonte', c.financials?.source)}
       ${kv('Ano ref.', c.financials?.reference_year)}
     </div>
     <div class="detail-section">
-      <h3>Crédito público</h3>
+      <h3>Histórico crédito público</h3>
       ${kv('BNDES (total)', fmt(bndesTotal(c)))}
       ${kv('Contratos BNDES', c.bndes_contracts?.length || '—')}
       ${kv('Produtos BNDES', [...new Set((c.bndes_contracts||[]).map(x=>x.product))].join(', ') || '—')}
       <hr style="margin:10px 0;border-color:#e5e7eb">
       ${kv('FINEP (total)', fmt(finepTotal(c)))}
       ${kv('Contratos FINEP', c.finep_contracts?.length || '—')}
-      ${kv('Programas', [...new Set((c.finep_contracts||[]).map(x=>x.program))].slice(0,3).join(', ') || '—')}
+      ${kv('Programas FINEP', [...new Set((c.finep_contracts||[]).map(x=>x.program))].slice(0,3).join(', ') || '—')}
     </div>
     <div class="detail-section" style="grid-column:1/-1">
       <h3>Tecnologia</h3>
@@ -548,12 +588,7 @@ function showDetail(c, tr) {
   `;
 
   const notesEl = document.getElementById('detail-notes');
-  if (c.outreach_notes) {
-    notesEl.textContent = '💡 ' + c.outreach_notes;
-    notesEl.style.display = 'block';
-  } else {
-    notesEl.style.display = 'none';
-  }
+  notesEl.style.display = 'none'; // racional agora está no grid acima
 
   document.getElementById('detail-panel').classList.add('open');
   document.getElementById('detail-panel').scrollIntoView({behavior:'smooth', block:'start'});

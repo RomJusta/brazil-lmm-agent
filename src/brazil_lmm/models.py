@@ -175,7 +175,14 @@ class Company(BaseModel):
     enrichment_sources: list[str] = Field(default_factory=list)
     confidence_score: float = 0.0      # overall 0–1
     outreach_score: float | None = None
-    outreach_notes: str | None = None
+    outreach_notes: str | None = None  # resumo comercial geral (legado)
+
+    # --- Racional comercial estruturado (gerado pelo Gemini) ---
+    why_approach: str | None = None           # por que abordar esta empresa agora
+    innovation_needs: str | None = None       # lacunas de inovação / necessidades identificadas
+    credit_structure: str | None = None       # estrutura de captação sugerida
+    suggested_programs: list[str] = Field(default_factory=list)  # BNDES/FINEP programas
+    urgency_factors: str | None = None        # fatores de urgência / timing
 
     @field_validator("cnpj", mode="before")
     @classmethod
