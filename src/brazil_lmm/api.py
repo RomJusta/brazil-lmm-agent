@@ -607,8 +607,60 @@ function closeDetail() {
 }
 
 function downloadCSV() {
-  if (!currentData.length) return;
-  window.location.href = '/export/csv';
+  if (!currentData.length) { toast('Nenhum dado para exportar'); return; }
+
+  const cols = [
+    'cnpj', 'razao_social', 'nome_fantasia', 'sector', 'address_uf', 'address_city',
+    'founded_year', 'is_active', 'size_tier', 'outreach_score',
+    'receita_brl', 'ebitda_brl', 'funcionarios', 'fonte_receita',
+    'ceo_nome', 'ceo_cargo', 'ceo_linkedin',
+    'socios',
+    'bndes_contratos', 'bndes_total_brl',
+    'finep_contratos', 'finep_total_brl',
+    'website', 'linkedin_url',
+    'why_approach', 'innovation_needs', 'credit_structure',
+    'suggested_programs', 'urgency_factors',
+  ];
+
+  function esc(v) {
+    if (v == null || v === '') return '';
+    const s = String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n'))
+      return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  const rows = currentData.map(c => {
+    const fin = c.financials || {};
+    const bndesTotal = (c.bndes_contracts||[]).reduce((s,x)=>s+(x.value_brl||0),0);
+    const finepTotal = (c.finep_contracts||[]).reduce((s,x)=>s+(x.value_brl||0),0);
+    const socios = (c.owners||[]).map(o=>o.name).join('; ');
+    const bndesProdutos = [...new Set((c.bndes_contracts||[]).map(x=>x.product))].join('; ');
+    const finepProgramas = [...new Set((c.finep_contracts||[]).map(x=>x.program))].join('; ');
+    return [
+      c.cnpj, c.razao_social, c.nome_fantasia||'', c.sector||'',
+      c.address_uf||'', c.address_city||'', c.founded_year||'',
+      c.is_active ? 'Sim' : 'Não', c.size_tier||'',
+      c.outreach_score != null ? (c.outreach_score*100).toFixed(0)+'%' : '',
+      fin.revenue_brl||'', fin.ebitda_brl||'', fin.headcount||'', fin.source||'',
+      c.ceo?.full_name||'', c.ceo?.role||'', c.ceo?.linkedin_url||'',
+      socios,
+      bndesProdutos, bndesTotal||'',
+      finepProgramas, finepTotal||'',
+      c.website||'', c.linkedin_url||'',
+      c.why_approach||'', c.innovation_needs||'',
+      c.credit_structure||'', (c.suggested_programs||[]).join('; '),
+      c.urgency_factors||'',
+    ].map(esc).join(',');
+  });
+
+  const csv = '﻿' + cols.join(',') + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = 'lmm_leads_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click(); URL.revokeObjectURL(url);
+  toast(`${currentData.length} empresas exportadas ✓`);
 }
 </script>
 </body>
