@@ -626,21 +626,27 @@ async def discover(req: DiscoverRequest) -> list[dict]:
     if not orchestrator:
         raise HTTPException(503, "Orchestrator not initialized")
 
-    pipeline = DiscoveryPipeline(orchestrator)
-    f = DiscoveryFilter(
-        sectors=req.sectors,
-        ufs=req.ufs,
-        limit=req.limit,
-        min_outreach_score=req.min_outreach_score,
-        use_bndes_source=req.use_bndes_source,
-        use_rfb_source=req.use_rfb_source,
-    )
-    companies = await pipeline.run(f)
+    try:
+        pipeline = DiscoveryPipeline(orchestrator)
+        f = DiscoveryFilter(
+            sectors=req.sectors,
+            ufs=req.ufs,
+            limit=req.limit,
+            min_outreach_score=req.min_outreach_score,
+            use_bndes_source=req.use_bndes_source,
+            use_rfb_source=req.use_rfb_source,
+        )
+        companies = await pipeline.run(f)
 
-    if db:
-        await db.upsert_batch(companies)
+        if db:
+            await db.upsert_batch(companies)
 
-    return [c.model_dump() for c in companies]
+        return [c.model_dump() for c in companies]
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(tb)
+        raise HTTPException(500, detail=f"{type(e).__name__}: {e}\n\n{tb}")
 
 
 @app.get("/export/csv")
