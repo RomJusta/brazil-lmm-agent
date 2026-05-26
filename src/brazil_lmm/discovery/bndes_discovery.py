@@ -77,11 +77,17 @@ class BNDESDiscovery:
         allowed_cnaes: set[str],
         ufs: list[str] | None,
     ) -> list[DiscoveredCompany]:
-        reader = csv.DictReader(io.StringIO(content.replace('\r\n', '\n').replace('\r', '\n')), delimiter=";", quoting=csv.QUOTE_NONE, escapechar='\\')
+        reader = csv.DictReader(io.StringIO(content.replace('\r\n', '\n').replace('\r', '\n')), delimiter=";")
+        print(f"[BNDES] CSV columns: {reader.fieldnames}")
         aggregated: dict[str, DiscoveredCompany] = {}
 
+        total_rows = 0
         for row in reader:
-            cnpj = re.sub(r"\D", "", row.get("CNPJ do Beneficiário Final", ""))
+            total_rows += 1
+            if total_rows == 1:
+                print(f"[BNDES] First row sample: {dict(list(row.items())[:5])}")
+
+            cnpj = re.sub(r"\D", "", row.get("CNPJ do Beneficiário Final", "") or "")
             if len(cnpj) != 14:
                 continue
 
@@ -129,6 +135,7 @@ class BNDESDiscovery:
                     latest_year=year,
                 )
 
+        print(f"[BNDES] Total rows: {total_rows}, matched: {len(aggregated)}")
         return list(aggregated.values())
 
     def _rank(self, companies: list[DiscoveredCompany]) -> list[DiscoveredCompany]:
