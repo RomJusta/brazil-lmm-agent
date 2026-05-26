@@ -15,8 +15,6 @@ This is the richest free discovery source because:
 """
 from __future__ import annotations
 
-import csv
-import io
 import re
 from dataclasses import dataclass, field
 
@@ -25,13 +23,10 @@ import httpx
 from brazil_lmm.discovery.sector_map import INDUSTRY_CNAES, HEALTH_CNAES
 
 
-BNDES_CSV_URL = (
-    "https://www.bndes.gov.br/arquivos/transparencia/"
-    "planilhas-operacoes-contratadas/operacoes-contratadas.csv"
-)
+# BNDES REST API — paginated, filterable by sector/UF
+BNDES_API_URL = "https://operacoes.bndes.gov.br/api/operacoes"
 
 # Contract value range as size proxy for LMM (R$50M–R$850M revenue)
-# Companies in that revenue range typically borrow R$500K–R$80M from BNDES
 MIN_CONTRACT_BRL = 500_000
 MAX_CONTRACT_BRL = 80_000_000
 
@@ -56,87 +51,87 @@ class BNDESDiscovery:
 
     async def discover(
         self,
-        sectors: list[str],          # ["industria", "saude"]
-        ufs: list[str] | None = None, # ["SP","RJ"] or None = all
+        sectors: list[str],
+        ufs: list[str] | None = None,
         limit: int = 500,
     ) -> list[DiscoveredCompany]:
         allowed_cnaes = self._sector_cnaes(sectors)
-        raw = await self._download_csv()
-        companies = self._parse(raw, allowed_cnaes, ufs)
-        companies = self._rank(companies)
-        return companies[:limit]
-
-    async def _download_csv(self) -> str:
-        resp = await self._client.get(BNDES_CSV_URL)
-        resp.raise_for_status()
-        return resp.content.decode("latin-1")
-
-    def _parse(
-        self,
-        content: str,
-        allowed_cnaes: set[str],
-        ufs: list[str] | None,
-    ) -> list[DiscoveredCompany]:
-        reader = csv.DictReader(io.StringIO(content.replace('\r\n', '\n').replace('\r', '\n')), delimiter=";")
-        print(f"[BNDES] CSV columns: {reader.fieldnames}")
         aggregated: dict[str, DiscoveredCompany] = {}
+        page = 1
+        page_size = 100
 
-        total_rows = 0
-        for row in reader:
-            total_rows += 1
-            if total_rows == 1:
-                print(f"[BNDES] First row sample: {dict(list(row.items())[:5])}")
+        while len(aggregated) < limit:
+            params: dict = {"size": page_size, "pagina": page}
+            if ufs:
+                params["uf"] = ufs[0]  # API takes one UF at a time
 
-            cnpj = re.sub(r"\D", "", row.get("CNPJ do Beneficiário Final", "") or "")
-            if len(cnpj) != 14:
-                continue
-
-            uf = (row.get("UF", "") or "").strip().upper()
-            if ufs and uf not in [u.upper() for u in ufs]:
-                continue
-
-            cnae_raw = (row.get("CNAE", "") or row.get("Setor CNAE", "") or "").strip()
-            cnae_prefix = re.sub(r"\D", "", cnae_raw)[:2]
-            if allowed_cnaes and cnae_prefix not in allowed_cnaes:
-                continue
-
-            value_str = (row.get("Valor Contratado (R$)", "") or "0").replace(".", "").replace(",", ".")
             try:
-                value = float(value_str)
-            except ValueError:
-                value = 0.0
+                resp = await self._client.get(BNDES_API_URL, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                print(f"[BNDES] API error page {page}: {e}")
+                break
 
-            if value < MIN_CONTRACT_BRL or value > MAX_CONTRACT_BRL:
-                continue
+            items = data if isinstance(data, list) else data.get("content", [])
+            if not items:
+                break
 
-            razao = (row.get("Beneficiário Final", "") or row.get("Razão Social", "") or "").strip()
-            city = (row.get("Município do Beneficiário Final", "") or "").strip().title()
-            sector_hint = cnae_raw
+            print(f"[BNDES] Page {page}: {len(items)} items, sample keys: {list(items[0].keys())[:8] if items else []}")
 
-            date_str = row.get("Data de Contratação", "") or ""
-            year_match = re.search(r"\d{4}", date_str)
-            year = int(year_match.group()) if year_match else None
+            for item in items:
+                cnpj = re.sub(r"\D", "", str(item.get("cnpjBeneficiarioFinal", "") or ""))
+                if len(cnpj) != 14:
+                    continue
 
-            if cnpj in aggregated:
-                existing = aggregated[cnpj]
-                existing.total_bndes_brl += value
-                existing.contract_count += 1
-                if year and (existing.latest_year is None or year > existing.latest_year):
-                    existing.latest_year = year
-            else:
-                aggregated[cnpj] = DiscoveredCompany(
-                    cnpj=cnpj,
-                    razao_social=razao,
-                    sector_hint=sector_hint,
-                    uf=uf,
-                    city=city,
-                    total_bndes_brl=value,
-                    contract_count=1,
-                    latest_year=year,
-                )
+                uf = (item.get("uf", "") or "").strip().upper()
+                if ufs and uf not in [u.upper() for u in ufs]:
+                    continue
 
-        print(f"[BNDES] Total rows: {total_rows}, matched: {len(aggregated)}")
-        return list(aggregated.values())
+                cnae_raw = str(item.get("setorCnae", "") or item.get("setor", "") or "")
+                cnae_prefix = re.sub(r"\D", "", cnae_raw)[:2]
+                if allowed_cnaes and cnae_prefix not in allowed_cnaes:
+                    continue
+
+                try:
+                    value = float(item.get("valorContratado", 0) or 0)
+                except (ValueError, TypeError):
+                    value = 0.0
+
+                if value < MIN_CONTRACT_BRL or value > MAX_CONTRACT_BRL:
+                    continue
+
+                razao = str(item.get("nomeCliente", "") or item.get("beneficiarioFinal", "") or "")
+                city = str(item.get("municipio", "") or "").title()
+                date_str = str(item.get("dataContratacao", "") or "")
+                year_match = re.search(r"\d{4}", date_str)
+                year = int(year_match.group()) if year_match else None
+
+                if cnpj in aggregated:
+                    aggregated[cnpj].total_bndes_brl += value
+                    aggregated[cnpj].contract_count += 1
+                    if year and (aggregated[cnpj].latest_year is None or year > aggregated[cnpj].latest_year):
+                        aggregated[cnpj].latest_year = year
+                else:
+                    aggregated[cnpj] = DiscoveredCompany(
+                        cnpj=cnpj,
+                        razao_social=razao,
+                        sector_hint=cnae_raw,
+                        uf=uf,
+                        city=city,
+                        total_bndes_brl=value,
+                        contract_count=1,
+                        latest_year=year,
+                    )
+
+            # If last page returned fewer items than page_size, we're done
+            if len(items) < page_size:
+                break
+            page += 1
+
+        print(f"[BNDES] Discovery complete: {len(aggregated)} companies found")
+        companies = self._rank(list(aggregated.values()))
+        return companies[:limit]
 
     def _rank(self, companies: list[DiscoveredCompany]) -> list[DiscoveredCompany]:
         """
