@@ -255,6 +255,7 @@ class CompanyQuery(BaseModel):
     cnpj: str | None = None
     company_name: str | None = None
     website: str | None = None
+    revenue_hint: float | None = None  # receita verificada da CVM/DFP (R$)
 
     @field_validator("cnpj", mode="before")
     @classmethod

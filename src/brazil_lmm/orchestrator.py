@@ -73,6 +73,12 @@ class Orchestrator:
         # Build intermediate company from official data
         company = self._merge([rf_partial, bndes_partial, finep_partial], cnpj)
 
+        # Se veio receita verificada da CVM, usar como base financeira
+        if query.revenue_hint and company.financials.revenue_brl is None:
+            company.financials.revenue_brl = query.revenue_hint
+            company.financials.source = "CVM DFP"
+            company.financials.confidence = 0.95
+
         # Phase 2: web-based enrichment (needs website URL)
         website = company.website or query.website
         linkedin_task = asyncio.create_task(

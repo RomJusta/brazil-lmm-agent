@@ -36,6 +36,7 @@ class DiscoveredCompany:
     latest_year: int | None
     discovery_source: str = "bndes"
     score_hint: float = 0.0
+    revenue_hint: float | None = None  # receita verificada (ex: CVM DFP)
 
 
 class BNDESDiscovery:

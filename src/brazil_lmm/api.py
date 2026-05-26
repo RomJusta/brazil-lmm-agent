@@ -37,6 +37,7 @@ class DiscoverRequest(BaseModel):
     min_outreach_score: float = 0.0
     use_bndes_source: bool = True
     use_rfb_source: bool = False  # off by default (large download)
+    use_cvm: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +667,7 @@ async def discover(req: DiscoverRequest) -> list[dict]:
             min_outreach_score=req.min_outreach_score,
             use_bndes_source=req.use_bndes_source,
             use_rfb_source=req.use_rfb_source,
+            use_cvm=req.use_cvm,
         )
         companies = await pipeline.run(f)
 

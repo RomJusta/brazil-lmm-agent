@@ -1,12 +1,12 @@
 """
 Discovery Pipeline — runs all sources in parallel, merges, enriches, ranks.
 
-Sources (all run concurrently):
-  1. BNDES API          — direct REST (works when Railway can reach bndes.gov.br)
-  2. Portal da Transparência — BNDES + FINEP contracts (requires TRANSPARENCIA_API_KEY)
-  3. Econodata scraping — Brazilian B2B directory, no auth needed
-  4. Seed list          — curated 40 known LMM companies, instant fallback
-  5. BNDES file upload  — user-uploaded spreadsheet (separate endpoint)
+Sources (all run concurrently, all free/no-auth):
+  1. CVM open data      — empresas listadas na B3 com receita real do DFP (dados.cvm.gov.br)
+  2. Econodata scraping — diretório B2B brasileiro, sem autenticação
+  3. Seed list          — candidatas conhecidas (não confirmadas LMM), fallback instantâneo
+  4. BNDES API          — empresas com crédito ativo (quando acessível)
+  5. Portal Transparência — contratos BNDES/FINEP (requer TRANSPARENCIA_API_KEY)
 
 Results are deduplicated by CNPJ, then enriched and ranked.
 """
@@ -17,6 +17,7 @@ import os
 from dataclasses import dataclass, field
 
 from brazil_lmm.discovery.bndes_discovery import BNDESDiscovery, DiscoveredCompany
+from brazil_lmm.discovery.cvm import CVMDiscovery
 from brazil_lmm.discovery.econodata import EconodataDiscovery
 from brazil_lmm.discovery.transparencia import TransparenciaDiscovery
 from brazil_lmm.discovery.seed_list import get_seed_companies
@@ -34,6 +35,7 @@ class DiscoveryFilter:
     use_econodata: bool = True
     use_transparencia: bool = True
     use_seed: bool = True
+    use_cvm: bool = True
 
 
 class DiscoveryPipeline:
@@ -50,9 +52,13 @@ class DiscoveryPipeline:
 
         print(f"[PIPELINE] {len(candidates)} unique candidates → enriching...")
 
-        # Phase 2: enrich
+        # Phase 2: enrich — passa revenue_hint da CVM quando disponível
         queries = [
-            CompanyQuery(cnpj=c.cnpj, company_name=c.razao_social or None)
+            CompanyQuery(
+                cnpj=c.cnpj,
+                company_name=c.razao_social or None,
+                revenue_hint=c.revenue_hint,
+            )
             for c in candidates
         ]
         companies = await self._orchestrator.process_batch(queries)
@@ -70,14 +76,16 @@ class DiscoveryPipeline:
     async def _discover_all(self, f: DiscoveryFilter) -> list[DiscoveredCompany]:
         tasks = []
 
-        if f.use_bndes_source:
-            tasks.append(self._run_bndes(f))
-        if f.use_transparencia:
-            tasks.append(self._run_transparencia(f))
+        if f.use_cvm:
+            tasks.append(self._run_cvm(f))
         if f.use_econodata:
             tasks.append(self._run_econodata(f))
         if f.use_seed:
             tasks.append(self._run_seed(f))
+        if f.use_bndes_source:
+            tasks.append(self._run_bndes(f))
+        if f.use_transparencia:
+            tasks.append(self._run_transparencia(f))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -126,3 +134,10 @@ class DiscoveryPipeline:
 
     async def _run_seed(self, f: DiscoveryFilter) -> list[DiscoveredCompany]:
         return get_seed_companies(f.sectors, f.ufs)
+
+    async def _run_cvm(self, f: DiscoveryFilter) -> list[DiscoveredCompany]:
+        agent = CVMDiscovery()
+        try:
+            return await agent.discover(f.sectors, f.ufs, f.limit)
+        finally:
+            await agent.close()
