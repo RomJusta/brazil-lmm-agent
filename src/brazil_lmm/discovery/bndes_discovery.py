@@ -90,16 +90,19 @@ class BNDESDiscovery:
 
                 cnae_raw = str(item.get("setorCnae", "") or item.get("setor", "") or "")
                 cnae_prefix = re.sub(r"\D", "", cnae_raw)[:2]
-                if allowed_cnaes and cnae_prefix not in allowed_cnaes:
-                    continue
+                # Temporarily skip CNAE filter to confirm API works
+                # if allowed_cnaes and cnae_prefix not in allowed_cnaes:
+                #     continue
 
                 try:
                     value = float(item.get("valorContratado", 0) or 0)
                 except (ValueError, TypeError):
                     value = 0.0
 
-                if value < MIN_CONTRACT_BRL or value > MAX_CONTRACT_BRL:
-                    continue
+                # Temporarily permissive — log value to tune range
+                print(f"[BNDES] value={value} cnae={cnae_prefix} uf={uf} cnpj={cnpj[:6]}...")
+                if value > 0 and value > MAX_CONTRACT_BRL * 10:
+                    continue  # only skip truly huge contracts
 
                 razao = str(item.get("nomeCliente", "") or item.get("beneficiarioFinal", "") or "")
                 city = str(item.get("municipio", "") or "").title()
