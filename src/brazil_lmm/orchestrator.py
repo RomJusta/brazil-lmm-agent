@@ -32,12 +32,13 @@ from brazil_lmm.models import (
 # ---------------------------------------------------------------------------
 
 SCORE_WEIGHTS = {
-    "is_lmm": 30,               # revenue bracket fits
-    "has_bndes_credit": 20,     # already uses public credit — innovation culture
-    "has_finep_credit": 20,
-    "has_tech_stack": 10,       # shows digital maturity
-    "has_ceo_contact": 10,      # we can reach someone
-    "active_company": 10,       # not dormant
+    # Offer: Crédito / Financiamento — Indústria + Saúde
+    "is_lmm": 25,               # revenue bracket R$50M–R$850M
+    "has_bndes_credit": 25,     # already uses structured credit = easiest to convert
+    "has_finep_credit": 15,     # innovation credit = open to new instruments
+    "active_company": 15,       # not dormant
+    "has_ceo_contact": 10,      # can reach decision maker directly
+    "target_sector": 10,        # Indústria or Saúde = primary targets
 }
 
 
@@ -350,6 +351,13 @@ class Orchestrator:
     # Outreach scoring
     # -----------------------------------------------------------------------
 
+    TARGET_SECTORS = {
+        "Indústria", "Alimentos e Bebidas", "Química", "Farmacêutico",
+        "Máquinas e Equipamentos", "Metalurgia", "Veículos", "Construção Civil",
+        "Borracha e Plástico", "Eletrônicos", "Têxtil",
+        "Saúde", "Equipamentos Médicos",
+    }
+
     def _score(self, company: Company) -> float:
         score = 0.0
         max_score = sum(SCORE_WEIGHTS.values())
@@ -360,11 +368,11 @@ class Orchestrator:
             score += SCORE_WEIGHTS["has_bndes_credit"]
         if company.finep_contracts:
             score += SCORE_WEIGHTS["has_finep_credit"]
-        if company.tech_stack.inferred_from:
-            score += SCORE_WEIGHTS["has_tech_stack"]
         if company.ceo is not None:
             score += SCORE_WEIGHTS["has_ceo_contact"]
         if company.is_active:
             score += SCORE_WEIGHTS["active_company"]
+        if company.sector and any(t in (company.sector or "") for t in self.TARGET_SECTORS):
+            score += SCORE_WEIGHTS["target_sector"]
 
         return round(score / max_score, 3)

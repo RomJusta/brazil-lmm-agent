@@ -5,6 +5,7 @@ Endpoints:
   GET  /              → web UI
   POST /enrich        → single CNPJ enrichment
   POST /enrich/batch  → CSV upload, returns JSON
+  POST /discover      → full discovery pipeline (find + enrich + rank)
   GET  /companies     → list enriched companies from DB
   GET  /companies/{cnpj} → single company from DB
   GET  /export/csv    → download full DB as CSV
@@ -19,11 +20,22 @@ from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from brazil_lmm.models import Company, CompanyQuery
 from brazil_lmm.orchestrator import Orchestrator
 from brazil_lmm.storage.database import Database
 from brazil_lmm.export.exporter import _flatten, COLUMNS
+from brazil_lmm.discovery.pipeline import DiscoveryPipeline, DiscoveryFilter
+
+
+class DiscoverRequest(BaseModel):
+    sectors: list[str] = ["industria", "saude"]
+    ufs: list[str] | None = None
+    limit: int = 100
+    min_outreach_score: float = 0.0
+    use_bndes_source: bool = True
+    use_rfb_source: bool = False  # off by default (large download)
 
 
 # ---------------------------------------------------------------------------
@@ -158,13 +170,45 @@ HTML = """
   <div class="card">
     <h2>Enriquecer empresa</h2>
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('single')">CNPJ único</button>
+      <button class="tab active" onclick="switchTab('discover')">🔍 Descobrir leads</button>
+      <button class="tab" onclick="switchTab('single')">CNPJ único</button>
       <button class="tab" onclick="switchTab('batch')">Lote (CSV)</button>
       <button class="tab" onclick="switchTab('browse')">Ver empresas</button>
     </div>
 
+    <!-- Discover -->
+    <div id="tab-discover" class="panel active">
+      <p style="font-size:.875rem;color:#6b7280;margin-bottom:16px">
+        Busca automática de empresas Indústria + Saúde com crédito BNDES ativo.
+        O agente encontra, enriquece e ranqueia. Pode levar alguns minutos.
+      </p>
+      <div class="row">
+        <div>
+          <label style="font-size:.85rem;color:#6b7280;display:block;margin-bottom:4px">Quantidade de leads</label>
+          <select id="disc-limit">
+            <option value="50">50 empresas (rápido ~2 min)</option>
+            <option value="100" selected>100 empresas (~5 min)</option>
+            <option value="200">200 empresas (~10 min)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.85rem;color:#6b7280;display:block;margin-bottom:4px">Score mínimo</label>
+          <select id="disc-minscore">
+            <option value="0">Todos</option>
+            <option value="0.3">Acima de 30%</option>
+            <option value="0.5" selected>Acima de 50%</option>
+            <option value="0.7">Acima de 70% (alta qualidade)</option>
+          </select>
+        </div>
+      </div>
+      <div style="background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:12px;font-size:.875rem">
+        <strong>Fonte primária:</strong> BNDES Transparência — empresas que já usam crédito estruturado = leads mais quentes para uma oferta de financiamento.
+      </div>
+      <button class="primary" onclick="runDiscover()">🚀 Descobrir e ranquear empresas</button>
+    </div>
+
     <!-- Single CNPJ -->
-    <div id="tab-single" class="panel active">
+    <div id="tab-single" class="panel">
       <div class="row">
         <div>
           <label style="font-size:.85rem;color:#6b7280;display:block;margin-bottom:4px">CNPJ</label>
@@ -256,12 +300,40 @@ let currentData = [];
 let selectedCnpj = null;
 
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i) => {
-    t.classList.toggle('active', ['single','batch','browse'][i] === name);
-  });
-  document.querySelectorAll('.panel').forEach((p,i) => {
-    p.classList.toggle('active', ['tab-single','tab-batch','tab-browse'][i] === 'tab-'+name);
-  });
+  const names = ['discover','single','batch','browse'];
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i] === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  const el = document.getElementById('tab-' + name);
+  if (el) el.classList.add('active');
+}
+
+async function runDiscover() {
+  const limit = parseInt(document.getElementById('disc-limit').value);
+  const minScore = parseFloat(document.getElementById('disc-minscore').value);
+  loading(true);
+  toast('Buscando empresas... isso pode levar alguns minutos ⏳');
+  try {
+    const r = await fetch('/discover', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        sectors: ['industria', 'saude'],
+        ufs: null,
+        limit,
+        min_outreach_score: minScore,
+        use_bndes_source: true,
+        use_rfb_source: false
+      })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    currentData = await r.json();
+    renderTable(currentData);
+    toast(`${currentData.length} empresas encontradas e ranqueadas ✓`);
+  } catch(e) {
+    toast('Erro: ' + e.message);
+  } finally {
+    loading(false);
+  }
 }
 
 function loading(on) {
@@ -542,6 +614,33 @@ async def get_company(cnpj: str) -> dict:
     if not company:
         raise HTTPException(404, f"CNPJ {cnpj} not found")
     return company.model_dump()
+
+
+@app.post("/discover")
+async def discover(req: DiscoverRequest) -> list[dict]:
+    """
+    Full pipeline: discover companies by sector/UF → enrich → rank.
+    Returns sorted list by outreach_score descending.
+    This can take several minutes for large limits.
+    """
+    if not orchestrator:
+        raise HTTPException(503, "Orchestrator not initialized")
+
+    pipeline = DiscoveryPipeline(orchestrator)
+    f = DiscoveryFilter(
+        sectors=req.sectors,
+        ufs=req.ufs,
+        limit=req.limit,
+        min_outreach_score=req.min_outreach_score,
+        use_bndes_source=req.use_bndes_source,
+        use_rfb_source=req.use_rfb_source,
+    )
+    companies = await pipeline.run(f)
+
+    if db:
+        await db.upsert_batch(companies)
+
+    return [c.model_dump() for c in companies]
 
 
 @app.get("/export/csv")
