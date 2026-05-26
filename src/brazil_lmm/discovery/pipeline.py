@@ -64,7 +64,8 @@ class DiscoveryPipeline:
 
         # BNDES source first — these are the warmest leads (already credit users)
         if filter.use_bndes_source:
-            bndes = BNDESDiscovery()
+            import os
+            bndes = BNDESDiscovery(transparencia_api_key=os.getenv("TRANSPARENCIA_API_KEY"))
             try:
                 bndes_results = await bndes.discover(
                     sectors=filter.sectors,
