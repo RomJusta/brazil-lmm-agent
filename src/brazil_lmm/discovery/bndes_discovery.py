@@ -77,7 +77,7 @@ class BNDESDiscovery:
         allowed_cnaes: set[str],
         ufs: list[str] | None,
     ) -> list[DiscoveredCompany]:
-        reader = csv.DictReader(io.StringIO(content), delimiter=";")
+        reader = csv.DictReader(io.StringIO(content.replace('\r\n', '\n').replace('\r', '\n')), delimiter=";", quoting=csv.QUOTE_NONE, escapechar='\\')
         aggregated: dict[str, DiscoveredCompany] = {}
 
         for row in reader:
