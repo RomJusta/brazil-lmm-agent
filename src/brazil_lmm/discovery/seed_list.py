@@ -1,63 +1,101 @@
 """
-Seed list — curated CNPJs of known Brazilian LMM companies in Indústria + Saúde.
+Seed list — CNPJs de empresas brasileiras genuinamente LMM.
 
-These are publicly registered companies (CNPJ is public information in Brazil).
-Used as an instant fallback when all APIs are unavailable.
-Revenue range: approximately R$50M–R$850M.
+Critério: receita estimada R$50M–R$850M, setores Indústria + Saúde.
+Fontes: B3 (ITR/DFP público) + empresas privadas mid-size conhecidas.
+CNPJs são informação pública (Receita Federal).
 """
 from __future__ import annotations
 
 from brazil_lmm.discovery.bndes_discovery import DiscoveredCompany
 
-# Format: (cnpj_digits, razao_social, sector, uf)
+# Formato: (cnpj_digits, razao_social, sector, uf)
 SEED_COMPANIES: list[tuple[str, str, str, str]] = [
-    # Indústria — Alimentos & Bebidas
-    ("01838723000127", "CAMIL ALIMENTOS SA", "Alimentos", "RS"),
-    ("07526557000100", "M DIAS BRANCO SA", "Alimentos", "CE"),
-    ("92754738000162", "MARCOPOLO SA", "Veículos", "RS"),
-    ("89086144000116", "RANDON SA IMPLEMENTOS E PARTICIPACOES", "Veículos", "RS"),
-    ("56720428000163", "INDUSTRIAS ROMI SA", "Máquinas", "SP"),
-    ("60840055000131", "FLEURY SA", "Saúde", "SP"),
-    ("04932944000128", "DASA - DIAGNOSTICOS DA AMERICA SA", "Saúde", "SP"),
-    ("58430828000160", "BLAU FARMACEUTICA SA", "Farmacêutico", "SP"),
-    ("60659463000191", "ACHE LABORATORIOS FARMACEUTICOS SA", "Farmacêutico", "SP"),
-    ("55072021000143", "EUROFARMA LABORATORIOS SA", "Farmacêutico", "SP"),
-    ("02341000000189", "HYPERA SA", "Farmacêutico", "SP"),
-    ("57507378000178", "EMS SA", "Farmacêutico", "SP"),
-    ("84429695000111", "WEG SA", "Eletrodomésticos", "SC"),
-    ("33611500000119", "GERDAU SA", "Metalurgia", "RS"),
-    ("60751503000101", "USINAS SIDERURGICAS DE MINAS GERAIS SA", "Metalurgia", "MG"),
-    ("07170762000142", "TEGMA GESTAO LOGISTICA SA", "Logística", "SP"),
-    ("01125541000199", "LOCALFRIO SA", "Logística", "SP"),
-    ("76535764000143", "INTELBRAS SA", "Eletrônicos", "SC"),
-    ("00776574000156", "TUPY SA", "Metalurgia", "SC"),
-    ("92202408000161", "SCHULZ SA", "Máquinas", "SC"),
-    ("83929379000174", "METALFRIO SOLUTIONS SA", "Refrigeração", "SP"),
-    ("03541090000119", "FRAS-LE SA", "Autopeças", "RS"),
-    ("01156506000116", "IOCHPE-MAXION SA", "Autopeças", "SP"),
-    ("61156113000175", "MAHLE METAL LEVE SA", "Autopeças", "SP"),
-    ("44782899000155", "WETZEL SA", "Autopeças", "SC"),
-    # Saúde
-    ("47508411000156", "FLEURY MEDICINA E SAUDE SA", "Saúde", "SP"),
-    ("00853710000191", "ONCOCLÍNICAS DO BRASIL SA", "Saúde", "SP"),
-    ("10629105000141", "REDE D'OR SAO LUIZ SA", "Saúde", "RJ"),
-    ("06047087000139", "HAPVIDA PARTICIPACOES E INVESTIMENTOS SA", "Saúde", "CE"),
-    ("47286906000145", "NOSSA SENHORA DE LOURDES HOSPITAL", "Saúde", "SP"),
-    # Indústria diversa
-    ("61092037000108", "IRANI PAPEL E EMBALAGEM SA", "Papel", "SC"),
-    ("89116765000180", "SUZANO SA", "Papel", "SP"),
-    ("60643228000121", "KLABIN SA", "Papel", "SP"),
-    ("03703571000179", "FERTILIZANTES HERINGER SA", "Agrochemical", "MG"),
-    ("07280698000184", "NUTRIPLANT INDUSTRIA E COMERCIO SA", "Agrochemical", "SP"),
-    ("02387241000160", "KEPLER WEBER SA", "Armazenagem", "RS"),
-    ("84683481000119", "TEKA TECELAGEM KUEHNRICH SA", "Têxtil", "SC"),
-    ("45985371000108", "CEDRO TEXTIL SA", "Têxtil", "MG"),
-    ("60810366000175", "VICUNHA TEXTIL SA", "Têxtil", "SP"),
-    ("00073560000104", "VOTORANTIM CIMENTOS SA", "Construção", "SP"),
-    ("06164253000187", "CONSTRUTORA TENDA SA", "Construção", "SP"),
-    ("67030395000146", "EVEN CONSTRUTORA E INCORPORADORA SA", "Construção", "SP"),
-    ("09350073000106", "DIRECIONAL ENGENHARIA SA", "Construção", "MG"),
-    ("02998611000104", "TRISUL SA", "Construção", "SP"),
+
+    # -----------------------------------------------------------------------
+    # MÁQUINAS & EQUIPAMENTOS — receita R$200M–R$700M
+    # -----------------------------------------------------------------------
+    ("56720428000163", "INDUSTRIAS ROMI SA",                          "Máquinas",             "SP"),
+    ("92202408000161", "SCHULZ SA",                                   "Máquinas",             "SC"),
+    ("44782899000155", "WETZEL SA",                                   "Autopeças",            "SC"),
+    ("83929379000174", "METALFRIO SOLUTIONS SA",                      "Refrigeração",         "SP"),
+
+    # -----------------------------------------------------------------------
+    # PAPEL, EMBALAGEM & MATERIAIS DE CONSTRUÇÃO — receita R$400M–R$800M
+    # -----------------------------------------------------------------------
+    ("61092037000108", "IRANI PAPEL E EMBALAGEM SA",                  "Papel",                "SC"),
+    ("83769980000103", "PORTOBELLO SA",                               "Cerâmica",             "SC"),
+    ("56735130000101", "EUCATEX SA INDUSTRIA E COMERCIO",             "Madeira",              "SP"),
+    ("07510163000140", "ETERNIT SA",                                  "Construção",           "SP"),
+
+    # -----------------------------------------------------------------------
+    # TÊXTIL & VESTUÁRIO — receita R$200M–R$700M
+    # -----------------------------------------------------------------------
+    ("45985371000108", "CEDRO TEXTIL SA",                             "Têxtil",               "MG"),
+    ("84683481000119", "TEKA TECELAGEM KUEHNRICH SA",                 "Têxtil",               "SC"),
+    ("83884191000126", "DOHLER SA",                                   "Têxtil",               "SC"),
+    ("78876950000171", "CIA HERING SA",                               "Têxtil",               "SC"),
+
+    # -----------------------------------------------------------------------
+    # CONSTRUÇÃO CIVIL — receita R$300M–R$800M
+    # -----------------------------------------------------------------------
+    ("02998611000104", "TRISUL SA",                                   "Construção",           "SP"),
+    ("05761634000147", "PLANO E PLANO CONSTRUCOES SA",                "Construção",           "SP"),
+    ("04613875000107", "MELNICK DESENVOLVIMENTO IMOBILIARIO SA",      "Construção",           "RS"),
+    ("01090657000182", "MOURA DUBEUX ENGENHARIA SA",                  "Construção",           "PE"),
+    ("30038066000166", "LAVVI INCORPORADORA SA",                      "Construção",           "SP"),
+
+    # -----------------------------------------------------------------------
+    # AGRO, SEMENTES & INSUMOS — receita R$100M–R$800M
+    # -----------------------------------------------------------------------
+    ("07280698000184", "NUTRIPLANT INDUSTRIA E COMERCIO SA",          "Agrochemical",         "SP"),
+    ("02387241000160", "KEPLER WEBER SA",                             "Máquinas Agrícolas",   "RS"),
+    ("71995771000102", "BOA SAFRA SEMENTES SA",                       "Sementes",             "MS"),
+    ("77102914000154", "NORTOX SA",                                   "Agrochemical",         "PR"),
+    ("73423921000111", "OUROFINO SAUDE ANIMAL PARTICIPACOES SA",      "Agrochemical",         "SP"),
+
+    # -----------------------------------------------------------------------
+    # LOGÍSTICA & ARMAZENAGEM — receita R$300M–R$800M
+    # -----------------------------------------------------------------------
+    ("07170762000142", "TEGMA GESTAO LOGISTICA SA",                   "Logística",            "SP"),
+    ("01125541000199", "LOCALFRIO SA",                                "Logística",            "SP"),
+
+    # -----------------------------------------------------------------------
+    # FARMACÊUTICO mid-size — receita R$100M–R$800M
+    # -----------------------------------------------------------------------
+    ("05159134000187", "PRATI-DONADUZZI SA",                          "Farmacêutico",         "PR"),
+    ("60664619000193", "UNIAO QUIMICA FARMACEUTICA NACIONAL SA",      "Farmacêutico",         "SP"),
+    ("50530060000164", "CRISTALIA PRODUTOS QUIMICOS FARMACEUTICOS",   "Farmacêutico",         "SP"),
+    ("63543892000144", "LABORATORIO TEUTO BRASILEIRO SA",             "Farmacêutico",         "GO"),
+    ("02575829000137", "NOVEFARMA INDUSTRIA E COMERCIO SA",           "Farmacêutico",         "SP"),
+
+    # -----------------------------------------------------------------------
+    # SAÚDE — hospitais e diagnósticos mid-size — receita R$100M–R$800M
+    # -----------------------------------------------------------------------
+    ("47286906000145", "NOSSA SENHORA DE LOURDES HOSPITAL",           "Saúde",                "SP"),
+    ("10978364000109", "ALLIAR MEDICINA E DIAGNOSTICO SA",            "Saúde",                "SP"),
+    ("71524610000147", "HOSPITAL MATER DEI SA",                       "Saúde",                "MG"),
+    ("03823557000196", "KORA SAUDE PARTICIPACOES SA",                 "Saúde",                "RS"),
+    ("07518901000110", "HAPVIDA NORTE NORDESTE LOGISTICA SA",         "Saúde",                "CE"),
+    ("02975813000107", "HOSPITAL SANTA PAULA SA",                     "Saúde",                "SP"),
+
+    # -----------------------------------------------------------------------
+    # EQUIPAMENTOS MÉDICOS & DISPOSITIVOS — receita R$50M–R$400M
+    # -----------------------------------------------------------------------
+    ("04372495000170", "BAUMER SA",                                   "Equipamentos Médicos", "SP"),
+    ("60725503000148", "INSTRAMED INDUSTRIA MEDICO CIRURGICA SA",     "Equipamentos Médicos", "RS"),
+
+    # -----------------------------------------------------------------------
+    # QUÍMICA & PLÁSTICOS — receita R$100M–R$600M
+    # -----------------------------------------------------------------------
+    ("49669856000117", "PLASTICOS ABC INDUSTRIAL SA",                 "Química",              "SP"),
+    ("73191916000181", "OXITENO SA INDUSTRIA E COMERCIO",             "Química",              "SP"),
+
+    # -----------------------------------------------------------------------
+    # ELETROELETRÔNICO mid-size — receita R$100M–R$600M
+    # -----------------------------------------------------------------------
+    ("81243735000148", "POSITIVO TECNOLOGIA SA",                      "Eletrônicos",          "PR"),
+    ("01578931000100", "MULTILASER INDUSTRIAL SA",                    "Eletrônicos",          "SP"),
 ]
 
 
@@ -74,10 +112,15 @@ def get_seed_companies(
         "saude" in s.lower() or "saúde" in s.lower() for s in sectors
     )
 
-    health_sectors = {"Saúde", "Farmacêutico"}
+    health_sectors = {"Saúde", "Farmacêutico", "Equipamentos Médicos"}
     uf_set = {u.upper() for u in ufs} if ufs else None
 
+    seen: set[str] = set()
     for cnpj, name, sector, uf in SEED_COMPANIES:
+        if cnpj in seen:
+            continue
+        seen.add(cnpj)
+
         is_health = sector in health_sectors
         if is_health and not target_saude:
             continue
@@ -96,7 +139,7 @@ def get_seed_companies(
             contract_count=0,
             latest_year=None,
             discovery_source="seed_list",
-            score_hint=0.2,
+            score_hint=0.3,
         ))
 
     print(f"[SEED] {len(results)} seed companies loaded")
