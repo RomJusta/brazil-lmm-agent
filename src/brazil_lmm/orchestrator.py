@@ -5,12 +5,12 @@ uses Claude (tool-use) for disambiguation, and scores companies for outreach.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from datetime import datetime
 from typing import Any
 
-import anthropic
+import google.generativeai as genai
+from google.generativeai.types import FunctionDeclaration, Tool
 
 from brazil_lmm.agents.bndes import BNDESAgent
 from brazil_lmm.agents.finep import FINEPAgent
@@ -46,14 +46,13 @@ class Orchestrator:
     def __init__(
         self,
         *,
-        anthropic_api_key: str | None = None,
+        google_api_key: str | None = None,
         transparencia_api_key: str | None = None,
         builtwith_api_key: str | None = None,
         linkedin_cookie: str | None = None,
     ) -> None:
-        self._client = anthropic.AsyncAnthropic(
-            api_key=anthropic_api_key or os.environ["ANTHROPIC_API_KEY"]
-        )
+        genai.configure(api_key=google_api_key or os.environ["GOOGLE_API_KEY"])
+        self._model = genai.GenerativeModel("gemini-1.5-pro")
         self._transparencia_key = transparencia_api_key or os.getenv("TRANSPARENCIA_API_KEY")
         self._builtwith_key = builtwith_api_key or os.getenv("BUILTWITH_API_KEY")
         self._linkedin_cookie = linkedin_cookie or os.getenv("LINKEDIN_LI_AT_COOKIE")
@@ -247,85 +246,68 @@ class Orchestrator:
 
     async def _claude_disambiguate(self, company: Company, query: CompanyQuery) -> Company:
         """
-        Ask Claude to resolve ambiguous fields and fill gaps using tool-use.
-        Claude can call back into the data we already have to reason about it.
+        Ask Gemini to resolve ambiguous fields and fill gaps using function calling.
         """
         company_json = company.model_dump_json(indent=2)
 
-        tools = [
-            {
-                "name": "update_company_field",
-                "description": "Update a specific field on the company record with a resolved value.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "field": {
-                            "type": "string",
-                            "description": "The field path to update (e.g. 'sector', 'ceo.role', 'size_tier')",
-                        },
-                        "value": {
-                            "description": "The resolved value for the field.",
-                        },
-                        "reasoning": {
-                            "type": "string",
-                            "description": "One sentence explaining why this value was chosen.",
-                        },
-                    },
-                    "required": ["field", "value", "reasoning"],
+        update_field_fn = FunctionDeclaration(
+            name="update_company_field",
+            description="Update a specific field on the company record with a resolved value.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string", "description": "Field path e.g. 'sector'"},
+                    "value": {"type": "string", "description": "Resolved value"},
+                    "reasoning": {"type": "string", "description": "One sentence explanation"},
                 },
+                "required": ["field", "value", "reasoning"],
             },
-            {
-                "name": "add_outreach_notes",
-                "description": "Add a brief outreach note summarizing why this company is or isn't a good fit.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "notes": {
-                            "type": "string",
-                            "description": "2-3 sentences on commercial outreach fit.",
-                        },
-                    },
-                    "required": ["notes"],
-                },
-            },
-        ]
-
-        system = (
-            "You are a Brazilian commercial intelligence analyst. "
-            "You receive a partially enriched company record and must:\n"
-            "1. Resolve ambiguous or missing fields using available evidence.\n"
-            "2. Infer the sector from CNAE if missing.\n"
-            "3. Determine if the CEO field is correctly attributed.\n"
-            "4. Write outreach notes in Portuguese explaining fit for a commercial approach.\n"
-            "Use the provided tools to update the record. Only call tools when you have "
-            "sufficient evidence — do not fabricate data."
         )
 
+        add_notes_fn = FunctionDeclaration(
+            name="add_outreach_notes",
+            description="Add outreach notes summarizing commercial fit.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "notes": {"type": "string", "description": "2-3 sentences in Portuguese"},
+                },
+                "required": ["notes"],
+            },
+        )
+
+        tools = Tool(function_declarations=[update_field_fn, add_notes_fn])
+
         prompt = (
-            f"Company record to review:\n```json\n{company_json}\n```\n\n"
-            "Identify and resolve any ambiguous or missing fields. "
-            "Then write outreach notes summarizing commercial fit."
+            "Você é um analista de inteligência comercial brasileiro especializado em crédito.\n"
+            "Revise o registro da empresa abaixo e:\n"
+            "1. Resolva campos ausentes usando as evidências disponíveis.\n"
+            "2. Infira o setor pelo CNAE se estiver faltando.\n"
+            "3. Escreva notas de prospecção em português focadas em oferta de crédito/financiamento.\n"
+            "Não invente dados — use apenas o que está no registro.\n\n"
+            f"Registro:\n```json\n{company_json}\n```"
         )
 
         updates: dict[str, Any] = {}
         outreach_notes: str | None = None
 
-        response = await self._client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=system,
-            tools=tools,  # type: ignore[arg-type]
-            messages=[{"role": "user", "content": prompt}],
-        )
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self._model.generate_content(prompt, tools=[tools]),
+            )
+            for part in response.parts:
+                if part.function_call:
+                    name = part.function_call.name
+                    args = dict(part.function_call.args)
+                    if name == "update_company_field":
+                        updates[args["field"]] = args["value"]
+                    elif name == "add_outreach_notes":
+                        outreach_notes = args["notes"]
+        except Exception:
+            pass  # Gemini step is best-effort; don't crash enrichment
 
-        for block in response.content:
-            if block.type == "tool_use":
-                if block.name == "update_company_field":
-                    updates[block.input["field"]] = block.input["value"]
-                elif block.name == "add_outreach_notes":
-                    outreach_notes = block.input["notes"]
-
-        # Apply updates
         for field_path, value in updates.items():
             self._apply_field_update(company, field_path, value)
 
