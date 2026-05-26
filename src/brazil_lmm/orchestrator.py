@@ -62,13 +62,12 @@ class Orchestrator:
         cnpj = query.cnpj or ""
         name = query.company_name or ""
 
-        # Phase 1: official sources in parallel (fast, no auth needed)
-        rf_task = asyncio.create_task(self._run_receita_federal(cnpj, name))
-        bndes_task = asyncio.create_task(self._run_bndes(cnpj))
-        finep_task = asyncio.create_task(self._run_finep(cnpj, name))
-
+        # Phase 1: official sources in parallel — errors are caught per-agent
         rf_partial, bndes_partial, finep_partial = await asyncio.gather(
-            rf_task, bndes_task, finep_task
+            self._run_receita_federal(cnpj, name),
+            self._run_bndes(cnpj),
+            self._run_finep(cnpj, name),
+            return_exceptions=False,
         )
 
         # Build intermediate company from official data
@@ -112,25 +111,42 @@ class Orchestrator:
     # -----------------------------------------------------------------------
 
     async def _run_receita_federal(self, cnpj: str, name: str) -> PartialCompany:
-        async with ReceitaFederalAgent() as agent:
-            return await agent.enrich(cnpj, name)
+        try:
+            async with ReceitaFederalAgent() as agent:
+                return await agent.enrich(cnpj, name)
+        except Exception as e:
+            print(f"[RF] Error {cnpj}: {e}")
+            return PartialCompany(cnpj=cnpj, source="receita_federal", confidence=0.0)
 
     async def _run_bndes(self, cnpj: str) -> PartialCompany:
-        async with BNDESAgent() as agent:
-            return await agent.enrich(cnpj)
+        try:
+            async with BNDESAgent() as agent:
+                return await agent.enrich(cnpj)
+        except Exception as e:
+            print(f"[BNDES_ENRICH] Error {cnpj}: {e}")
+            return PartialCompany(cnpj=cnpj, source="bndes", confidence=0.0)
 
     async def _run_finep(self, cnpj: str, name: str) -> PartialCompany:
-        async with FINEPAgent(self._transparencia_key) as agent:
-            return await agent.enrich(cnpj, name)
+        try:
+            async with FINEPAgent(self._transparencia_key) as agent:
+                return await agent.enrich(cnpj, name)
+        except Exception as e:
+            print(f"[FINEP] Error {cnpj}: {e}")
+            return PartialCompany(cnpj=cnpj, source="finep", confidence=0.0)
 
     async def _run_linkedin(self, cnpj: str, name: str) -> PartialCompany:
-        async with LinkedInAgent(self._linkedin_cookie) as agent:
-            return await agent.enrich(cnpj, name)
+        try:
+            async with LinkedInAgent(self._linkedin_cookie) as agent:
+                return await agent.enrich(cnpj, name)
+        except Exception as e:
+            return PartialCompany(cnpj=cnpj, source="linkedin", confidence=0.0)
 
     async def _run_tech_stack(self, cnpj: str, website: str) -> PartialCompany:
-        # Pass website as company_name — TechStackAgent checks for http prefix
-        async with TechStackAgent(self._builtwith_key) as agent:
-            return await agent.enrich(cnpj, website)
+        try:
+            async with TechStackAgent(self._builtwith_key) as agent:
+                return await agent.enrich(cnpj, website)
+        except Exception as e:
+            return PartialCompany(cnpj=cnpj, source="tech_stack", confidence=0.0)
 
     # -----------------------------------------------------------------------
     # Merge logic
