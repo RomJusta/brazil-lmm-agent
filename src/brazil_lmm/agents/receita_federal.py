@@ -129,9 +129,6 @@ class ReceitaFederalAgent(BaseAgent):
         return None
 
     def _is_active(self, data: dict) -> bool:
-        status = (
-            data.get("situacao_cadastral", "")
-            or data.get("situacao", "")
-            or ""
-        ).upper()
-        return "ATIVA" in status or status == "2"  # code 2 = ATIVA in Receita Federal
+        raw = data.get("situacao_cadastral") or data.get("situacao") or ""
+        status = str(raw).upper().strip()
+        return "ATIVA" in status or status == "2"
